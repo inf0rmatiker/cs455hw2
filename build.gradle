@@ -1,0 +1,10 @@
+plugins {
+    id 'java'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'main.java.cs455.scaling.server.Server'
+    }
+}
+
