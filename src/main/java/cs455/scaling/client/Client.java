@@ -2,19 +2,17 @@ package main.java.cs455.scaling.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import main.java.cs455.scaling.hash.Hash;
-import main.java.cs455.scaling.server.Server;
-import java.util.List;
 import java.util.LinkedList;
 import main.java.cs455.scaling.server.Task;
 
 public class Client {
 
-  private LinkedList<String> taskHashes;
+  private ConcurrentHashMap<String, String> taskHashes;
   private String serverHost;
   private int serverPort;
   private int messageRate;
@@ -31,7 +29,7 @@ public class Client {
     this.serverHost = serverHost;
     this.messageRate = messageRate;
     this.serverPort = serverPort;
-    this.taskHashes = new LinkedList<>();
+    this.taskHashes = new ConcurrentHashMap<>();
     this.hasher = new Hash();
   }
 
@@ -56,7 +54,7 @@ public class Client {
     client = SocketChannel.open(new InetSocketAddress(this.serverHost, this.serverPort));
 
     // Create byte buffer
-    buffer = ByteBuffer.allocate(256);
+    buffer = ByteBuffer.allocate(8000);
   }
 
   /**
@@ -64,29 +62,48 @@ public class Client {
    * @throws IOException
    */
   public void doWork() throws IOException {
-    buffer = ByteBuffer.wrap("PLEASE SEND THIS BACK TO ME.".getBytes());
+    // Kicks off the sender thread, which randomly generates 8KB byte arrays, hashes them, and stores
+    // the hashes in the taskHashes ConcurrentHashMap. It then sends the original byte arrays to
+    // the Server.
+    this.initializeSenderThread();
+    this.startSenderThread();
 
-    String response = null;
+    // Listens to incoming hashes from the server, and if they are in the list of pending jobs,
+    // Removes them.
+    while (true) {
+      client.read(buffer); // blocking call to read a hash from the server
+      String completedHash = new String(buffer.array()).trim();
 
-    client.write(buffer);
-    buffer.clear();
-    client.read(buffer); // blocking call
+      if (isInHashMap(completedHash)) {
+        System.out.println("Found hash in HashMap, removing...");
+        removeTaskHash(completedHash);
+      }
+      else {
+        System.out.println("Unable to find hash in HashMap!");
+      }
 
-    response = new String(buffer.array()).trim();
-    System.out.println("Server responded with: " + response);
-    buffer.clear();
+      buffer.clear();
+    }
   }
 
-  public void initializeSenderThread(Socket socket) {
-    this.sender = new SenderThread(this, socket);
+  public void initializeSenderThread() {
+    this.sender = new SenderThread(this);
   }
 
-  public synchronized void removeTaskHash(String hash) {
+  public synchronized void sendMessageToServer(ByteBuffer byteBuffer) throws IOException {
+    client.write(byteBuffer);
+  }
+
+  public void removeTaskHash(String hash) {
     taskHashes.remove(hash);
   }
 
-  public synchronized void addTaskHash(String hash) {
-    taskHashes.add(hash);
+  public void addTaskHash(String hash) {
+    taskHashes.put(hash, hash);
+  }
+
+  public boolean isInHashMap(String hash) {
+    return taskHashes.containsKey(hash);
   }
 
   public void startSenderThread() {
@@ -123,6 +140,7 @@ public class Client {
     } catch (IOException e) {
       System.err.println("Unable to perform task...\n" + e.getMessage());
     }
+
   }
 
 }

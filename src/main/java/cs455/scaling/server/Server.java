@@ -8,6 +8,8 @@ import java.nio.channels.*;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.LinkedBlockingQueue;
+import main.java.cs455.scaling.message.DataPacket;
 
 public class Server {
 
@@ -47,7 +49,7 @@ public class Server {
 
       // Block until there is new activity
       selector.select();
-      System.out.println("\nActivity on selector!\n");
+      System.out.println("Activity on selector!\n");
 
       // Set of key(s) that are ready
       Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -70,7 +72,7 @@ public class Server {
 
         // If the key is for an OP_READ channel, read the data/respond
         if (key.isReadable()) {
-          readAndRespond(key);
+          readAndQueue(key);
         }
 
         // Remove it from set of ready keys, we have already processed it.
@@ -105,9 +107,9 @@ public class Server {
    * @param selectionKey The SelectionKey object associated with the SocketChannel
    * @throws IOException
    */
-  public void readAndRespond(SelectionKey selectionKey) throws IOException {
+  public void readAndQueue(SelectionKey selectionKey) throws IOException {
     // Initialize a buffer to read data
-    ByteBuffer buffer = ByteBuffer.allocate(256);
+    ByteBuffer buffer = ByteBuffer.allocate(8004);
 
     // Grab SocketChannel from the key
     SocketChannel client = (SocketChannel) selectionKey.channel();
@@ -119,12 +121,19 @@ public class Server {
       client.close();
     }
     else {
-      System.out.printf("\t\tReceived: %s\n", new String(buffer.array()));
+      System.out.printf("\t\tReceived %d bytes.\n\n", bytesRead);
 
-      // Flip the buffer to now write the exact same message
-      buffer.flip();
-      client.write(buffer);
+      // Construct a DataPacket from the buffer byte array.
+      byte[] totalMessageBytes = buffer.array();
+      DataPacket packet = new DataPacket(totalMessageBytes);
 
+      // Construct a new Task from the fields held in the DataPacket.
+      Task task = new Task(packet.getTotalMessageBytes(), packet.getLength());
+
+      System.out.println(task);
+      //this.threadPoolManager.addToTaskQueue(task);
+
+      // Clear the buffer so we can read another item
       buffer.clear();
     }
 
@@ -146,6 +155,9 @@ public class Server {
     return batchTime;
   }
 
+  /**
+   * Prints a generic usage message of what arguments to use to run the Server class.
+   */
   private static void printServerUsageMessage() {
     String message = "\nUsage:\n\njava main.java.cs455.scaling.server.Server <portnum> <thread-pool-size> <batch-size> <batch-time>\n";
     System.out.printf("%s\n\n", message);
