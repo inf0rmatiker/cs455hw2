@@ -15,7 +15,6 @@ public class Server {
 
   private int portNum, threadPoolSize, batchSize, batchTime;
   private ThreadPoolManager threadPoolManager;
-  private Map<String, ClientConnection> clientConnections;
 
   public Server(int portNum, int threadPoolSize, int batchSize, int batchTime) {
     this.portNum = portNum;
@@ -128,7 +127,7 @@ public class Server {
       DataPacket packet = new DataPacket(totalMessageBytes);
 
       // Construct a new Task from the fields held in the DataPacket.
-      Task task = new Task(packet.getTotalMessageBytes(), packet.getLength());
+      Task task = new Task(packet.getTotalMessageBytes(), packet.getLength(), selectionKey);
 
       System.out.println(task);
       //this.threadPoolManager.addToTaskQueue(task);
