@@ -17,7 +17,14 @@ public class Hash {
     }
     byte[] hash = digest.digest(data);
     BigInteger hashInt = new BigInteger(1, hash);
-    return hashInt.toString(16);
+    String returnValue = hashInt.toString(16);
+
+    int amountToPad = 40 - returnValue.length();
+    for (int i = 0; i < amountToPad; i++) {
+      returnValue += '0';
+    }
+    //System.out.println(returnValue.length());
+    return returnValue;
   }
 
 }

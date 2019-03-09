@@ -6,33 +6,39 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.LinkedBlockingQueue;
 import main.java.cs455.scaling.message.DataPacket;
 
 public class Server {
 
   private int portNum, threadPoolSize, batchSize, batchTime;
   private ThreadPoolManager threadPoolManager;
+  private Selector selector;
+  private Object completedTasksLock;
 
   public Server(int portNum, int threadPoolSize, int batchSize, int batchTime) {
     this.portNum = portNum;
     this.threadPoolSize = threadPoolSize;
     this.batchSize = batchSize;
     this.batchTime = batchTime;
-    this.threadPoolManager = new ThreadPoolManager(threadPoolSize);
+    this.completedTasksLock = new Object();
+    this.threadPoolManager = new ThreadPoolManager(threadPoolSize, batchSize, batchTime, this);
   }
 
   /**
    * Initializes a (selectable, non-blocking) ServerSocketChannel, registers it with the Selector
    * object, and listens for incoming activity on the Selector object. Once activity has been
    * flagged, iterates over the set of flagged activity and handles each case appropriately.
-   * @throws IOException
    */
   public void initializeServerAndListenForConnections() throws IOException {
+
+    this.startThreadPool();
+
     // Open a Selector
-    Selector selector = Selector.open();
+    selector = Selector.open();
 
     // Create server's input channel
     ServerSocketChannel serverSocket = ServerSocketChannel.open();
@@ -44,11 +50,9 @@ public class Server {
 
     // Loop on selector, listening for available I/O on our selectable channels.
     while (true) {
-      System.out.println("Listening for new messages or connections...");
-
       // Block until there is new activity
       selector.select();
-      System.out.println("Activity on selector!\n");
+      System.out.println("Activity on server.");
 
       // Set of key(s) that are ready
       Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -66,10 +70,10 @@ public class Server {
 
         // If the key is for an OP_ACCEPT channel, register it with selector
         if (key.isAcceptable()) {
-          registerConnection(selector, serverSocket);
+          registerConnection(serverSocket);
         }
 
-        // If the key is for an OP_READ channel, read the data/respond
+        // If the key is for an OP_READ channel, read the data
         if (key.isReadable()) {
           readAndQueue(key);
         }
@@ -87,13 +91,13 @@ public class Server {
 
   /**
    * Registers a selectable socket with the selector object once a connection has been established.
-   * @param selector The multiplexer for selectable channels
+   *
    * @param serverSocketChannel The ServerSocketChannel which contains the incoming connection
-   * @throws IOException
    */
-  public void registerConnection(Selector selector, ServerSocketChannel serverSocketChannel) throws IOException {
+  public void registerConnection(ServerSocketChannel serverSocketChannel) throws IOException {
     // Grab incoming socket from the serverSocketChannel
     SocketChannel client = serverSocketChannel.accept();
+    //ByteBuffer buffer = ByteBuffer.allocate(8000);
 
     // Configure client to be a selectable channel and register it with the selector
     client.configureBlocking(false);
@@ -103,39 +107,67 @@ public class Server {
 
   /**
    * Reads and handles data on an incoming selectable SocketChannel.
+   *
    * @param selectionKey The SelectionKey object associated with the SocketChannel
-   * @throws IOException
    */
   public void readAndQueue(SelectionKey selectionKey) throws IOException {
-    // Initialize a buffer to read data
-    ByteBuffer buffer = ByteBuffer.allocate(8004);
+    //ByteBuffer buffer = (ByteBuffer) selectionKey.attachment();
+    ByteBuffer buffer = ByteBuffer.allocate(8000);
 
     // Grab SocketChannel from the key
     SocketChannel client = (SocketChannel) selectionKey.channel();
-    // Read from it
-    int bytesRead = client.read(buffer);
+    int read = 0;
 
     // Handle a closed connection
-    if (bytesRead == -1) {
-      client.close();
+    while (buffer.hasRemaining() && read != -1) {
+      read = client.read(buffer);
     }
-    else {
-      System.out.printf("\t\tReceived %d bytes.\n\n", bytesRead);
+
+    if (read == -1) {
+      client.close();
+    } else {
+      //System.out.printf("\t\tReceived %d bytes.\n\n", bytesRead);
 
       // Construct a DataPacket from the buffer byte array.
       byte[] totalMessageBytes = buffer.array();
-      DataPacket packet = new DataPacket(totalMessageBytes);
 
       // Construct a new Task from the fields held in the DataPacket.
-      Task task = new Task(packet.getTotalMessageBytes(), packet.getLength(), selectionKey);
+      Task task = new Task(totalMessageBytes, totalMessageBytes.length, selectionKey);
 
-      System.out.println(task);
-      //this.threadPoolManager.addToTaskQueue(task);
+      this.threadPoolManager.addToTaskQueue(task);
 
       // Clear the buffer so we can read another item
       buffer.clear();
     }
+  }
 
+  /**
+   * Sends the completed tasks in a batch back to the original client
+   */
+  public void sendTasksToClients(List<Task> batch) {
+    for (Task task : batch) {
+      if (task.isComplete()) {
+        System.out.println("Task Complete...");
+        SelectionKey key = task.getKey();
+        SocketChannel clientChannel = (SocketChannel) key.channel();
+
+        ByteBuffer buffer = ByteBuffer.wrap(task.getHash().getBytes());
+        while (buffer.hasRemaining()) {
+          try {
+            clientChannel.write(buffer);
+          } catch (IOException e) {
+            System.err.println("UH OH");
+            System.err.println(e.getMessage());
+          }
+
+        }
+        buffer.clear();
+      }
+    }
+  }
+
+  public void startThreadPool() {
+    threadPoolManager.startWorkerThreads();
   }
 
   public int getPortNum() {

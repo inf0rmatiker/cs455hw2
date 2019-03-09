@@ -54,7 +54,7 @@ public class Client {
     client = SocketChannel.open(new InetSocketAddress(this.serverHost, this.serverPort));
 
     // Create byte buffer
-    buffer = ByteBuffer.allocate(8000);
+    buffer = ByteBuffer.allocate(40);
   }
 
   /**
@@ -75,11 +75,10 @@ public class Client {
       String completedHash = new String(buffer.array()).trim();
 
       if (isInHashMap(completedHash)) {
-        System.out.println("Found hash in HashMap, removing...");
         removeTaskHash(completedHash);
       }
       else {
-        System.out.println("Unable to find hash in HashMap!");
+        System.out.printf("Unable to find hash in HashMap!\n%s\n", completedHash);
       }
 
       buffer.clear();
