@@ -18,6 +18,7 @@ public class Client {
   private int messageRate;
   private Hash hasher;
   private SenderThread sender;
+  private ClientStatistics clientStatistics;
   private static SocketChannel client;
   private static ByteBuffer buffer;
 
@@ -31,6 +32,7 @@ public class Client {
     this.serverPort = serverPort;
     this.taskHashes = new ConcurrentHashMap<>();
     this.hasher = new Hash();
+    this.clientStatistics = new ClientStatistics();
   }
 
   public String getServerHost() {
@@ -43,6 +45,11 @@ public class Client {
 
   public int getMessageRate() {
     return messageRate;
+  }
+
+  public void startClientStatisticsThread() {
+    Thread clientStatistics = new Thread(this.clientStatistics, "Client Statistics Thread");
+    clientStatistics.start();
   }
 
   /**
@@ -73,12 +80,16 @@ public class Client {
     while (true) {
       client.read(buffer); // blocking call to read a hash from the server
       String completedHash = new String(buffer.array()).trim();
+      clientStatistics.incrementReceiveCount();
+      //System.out.printf("Completed Hash: \t%s\n", completedHash);
+
 
       if (isInHashMap(completedHash)) {
         removeTaskHash(completedHash);
       }
       else {
-        System.out.printf("Unable to find hash in HashMap!\n%s\n", completedHash);
+        System.out.printf("Unable to find hash in HashMap!\n\t>> %s <<\n", completedHash);
+        printTaskHashes();
       }
 
       buffer.clear();
@@ -86,7 +97,7 @@ public class Client {
   }
 
   public void initializeSenderThread() {
-    this.sender = new SenderThread(this);
+    this.sender = new SenderThread(this, clientStatistics);
   }
 
   public synchronized void sendMessageToServer(ByteBuffer byteBuffer) throws IOException {
@@ -103,6 +114,13 @@ public class Client {
 
   public boolean isInHashMap(String hash) {
     return taskHashes.containsKey(hash);
+  }
+
+  public void printTaskHashes() {
+    System.out.println("\t>> TASK HASHES <<");
+    for (String key: taskHashes.keySet()){
+      System.out.printf("\tKey: %s, Hash: %s\n", key, taskHashes.get(key));
+    }
   }
 
   public void startSenderThread() {
@@ -127,6 +145,7 @@ public class Client {
     int messageRate = Integer.parseInt(args[2]); // Should be between 2 - 4
 
     Client client = new Client(serverHost, serverPort, messageRate);
+    client.startClientStatisticsThread();
 
     try {
       client.establishServerConnection();

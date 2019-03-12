@@ -9,10 +9,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class ThreadPoolManager {
 
   public List<WorkerThread> threadPool; // List of WorkerThreads which are available
-  public List<List<Task>> taskQueue;
+  public List<Batch> taskQueue;
   private int threadPoolSize;
   public int batchSize;
-  private int batchTime;
+  private double batchTime;
   private boolean isDone = false;
   private long lastTimeRemoved = System.currentTimeMillis();
 
@@ -20,7 +20,7 @@ public class ThreadPoolManager {
     this(10, 10, 10, null);
   }
 
-  public ThreadPoolManager(int threadPoolSize, int batchSize, int batchTime, Server server) {
+  public ThreadPoolManager(int threadPoolSize, int batchSize, double batchTime, Server server) {
     this.taskQueue = new LinkedList<>();
     this.threadPool = new ArrayList<>(threadPoolSize);
     this.threadPoolSize = threadPoolSize;
@@ -32,7 +32,7 @@ public class ThreadPoolManager {
     }
   }
 
-  private int getBatchTimeMilliseconds() {
+  private double getBatchTimeMilliseconds() {
     return batchTime * 1000;
   }
 
@@ -48,57 +48,66 @@ public class ThreadPoolManager {
     // If the task list on the top of the queue is full, or batch-time has passed, notify a
     // Worker thread to pull off a job.
     synchronized (taskQueue) {
-      if ((!taskQueue.isEmpty()) && (isFull(taskQueue.get(0)) || batchTimePassed())) {
+//      for (Batch batch: taskQueue) {
+//        if (batch.batchContains(task)) {
+//          System.err.println("\n\tTask already exists in taskQueue!!!\n");
+//        }
+//      }
 
-        // Get the batch on the tail of the queue
-        List<Task> lastBatch = taskQueue.get(taskQueue.size() - 1);
-
-        // If the batch on the tail of the queue is full, create a new one
-        if (isFull(lastBatch)) {
-          addTaskToNewBatch(task);
-        }
-        else { // Otherwise, add the task to the non-full lastBatch
-          lastBatch.add(task);
-        }
+      if (taskQueue.isEmpty() || taskQueue.get(taskQueue.size() - 1).isFull()) {
+        //System.err.println("In isEmpty() conditional");
 
         // Notify a WorkerThread to remove a batch from the head of the queue
-        System.out.println("Notifying a worker");
-        taskQueue.notify();
+        // System.out.println("Notifying a worker");
+        // See if duplicate task
+//        for (Batch batch: taskQueue) {
+//          if (batch.batchContains(task)) {
+//            System.err.println("ALREADY HERRRRREEE");
+//          }
+//        }
+
+        addTaskToNewBatch(task);
       }
-      else if (taskQueue.isEmpty()) { // If the taskQueue has no batches in it, just add the task to a new batch
-        List<Task> newBatch = new LinkedList<>();
-        newBatch.add(task);
-        taskQueue.add(newBatch);
+      else {
+        taskQueue.get(taskQueue.size() - 1).addTaskToBatch(task);
+
+
       }
-      else { // The taskQueue is not empty, and the head isn't full, and batchTime hasn't passed.
-        List<Task> lastBatch = taskQueue.get(taskQueue.size() - 1);
-        lastBatch.add(task);
+      if (!taskQueue.isEmpty()) {
+        if (taskQueue.get(0).isFull() || batchTimePassed()) {
+          //System.err.println("In isFull() conditional");
+          taskQueue.notify();
+        }
       }
     }
   }
 
-  public boolean isFull(List<Task> batch) {
-    return batch.size() == this.batchSize;
-  }
 
   public boolean batchTimePassed() {
     long difference = System.currentTimeMillis() - this.lastTimeRemoved;
-    if (difference >= getBatchTimeMilliseconds()) {
-      System.out.println("Batch time has passed!");
-    }
     return (difference >= getBatchTimeMilliseconds());
-    //return false;
   }
 
   private void addTaskToNewBatch(Task task) {
     synchronized (taskQueue) {
-      List<Task> newBatch = new LinkedList<>();
-      newBatch.add(task);
+      Batch newBatch = new Batch(batchSize);
+      newBatch.addTaskToBatch(task);
       taskQueue.add(newBatch);
     }
   }
 
-  public List<List<Task>> getTaskQueue() {
+  /**
+   * Removes and returns the batch at the head of the queue
+   */
+  public Batch removeBatchFromQueue() {
+    synchronized (taskQueue) {
+      this.updateRemovedTimestamp();
+      return taskQueue.remove(0);
+    }
+  }
+
+
+  public List<Batch> getTaskQueue() {
     return this.taskQueue;
   }
 

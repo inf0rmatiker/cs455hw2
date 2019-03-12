@@ -12,12 +12,14 @@ public class SenderThread implements Runnable {
   private static ByteBuffer byteBuffer;
   private int messageRate; // Messages to send per second
   private Hash hasher; // Hasher instance
+  private ClientStatistics clientStatistics;
 
-  public SenderThread(Client client) {
+  public SenderThread(Client client, ClientStatistics clientStatistics) {
     this.client = client;
     this.messageRate = client.getMessageRate();
     this.hasher = new Hash();
     byteBuffer = ByteBuffer.allocate(8000);
+    this.clientStatistics = clientStatistics;
   }
 
   /**
@@ -42,7 +44,10 @@ public class SenderThread implements Runnable {
         // taskHashes ConcurrentHashMap.
         String hash = hasher.SHA1FromBytes(messageContents);
         client.addTaskHash(hash);
-        System.out.println(hash);
+//        //System.out.printf("Incomplete Hash: \t%s\n", hash);
+//        if (!client.isInHashMap(hash)) {
+//          System.out.println("FALSCH");
+//        }
 
         // Create a DataPacket message containing byte length and messageContents
         //DataPacket message = new DataPacket(length, messageContents);
@@ -51,7 +56,7 @@ public class SenderThread implements Runnable {
         byteBuffer = ByteBuffer.wrap(messageContents);
         client.sendMessageToServer(byteBuffer);
         byteBuffer.clear();
-
+        clientStatistics.incrementSentCount();
       } catch (IOException e) {
         System.err.println(e.getMessage());
       }

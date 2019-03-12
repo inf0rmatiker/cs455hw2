@@ -3,6 +3,7 @@ package main.java.cs455.scaling.server;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
@@ -14,18 +15,19 @@ import main.java.cs455.scaling.message.DataPacket;
 
 public class Server {
 
-  private int portNum, threadPoolSize, batchSize, batchTime;
+  private int portNum, threadPoolSize, batchSize;
+  private double batchTime;
   private ThreadPoolManager threadPoolManager;
   private Selector selector;
-  private Object completedTasksLock;
+  private ServerStatistics serverStatistics;
 
-  public Server(int portNum, int threadPoolSize, int batchSize, int batchTime) {
+  public Server(int portNum, int threadPoolSize, int batchSize, double batchTime) {
     this.portNum = portNum;
     this.threadPoolSize = threadPoolSize;
     this.batchSize = batchSize;
     this.batchTime = batchTime;
-    this.completedTasksLock = new Object();
     this.threadPoolManager = new ThreadPoolManager(threadPoolSize, batchSize, batchTime, this);
+    this.serverStatistics = new ServerStatistics();
   }
 
   /**
@@ -52,7 +54,7 @@ public class Server {
     while (true) {
       // Block until there is new activity
       selector.select();
-      System.out.println("Activity on server.");
+      //System.out.println("Activity on server.");
 
       // Set of key(s) that are ready
       Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -85,6 +87,11 @@ public class Server {
     }
   }
 
+  public void startServerStatisticsThread() {
+    Thread serverStatisticsThread = new Thread(serverStatistics, "Server Statistics");
+    serverStatisticsThread.start();
+  }
+
   public String getHostName() throws IOException {
     return InetAddress.getLocalHost().getHostName();
   }
@@ -102,7 +109,11 @@ public class Server {
     // Configure client to be a selectable channel and register it with the selector
     client.configureBlocking(false);
     client.register(selector, SelectionKey.OP_READ);
-    System.out.println("\t\tNew client registered\n");
+    //System.out.println("\t\tNew client registered\n");
+    synchronized (serverStatistics) {
+      serverStatistics.incrementClientConnections();
+      serverStatistics.addClientToThroughput(client);
+    }
   }
 
   /**
@@ -123,33 +134,34 @@ public class Server {
       read = client.read(buffer);
     }
 
-    if (read == -1) {
-      client.close();
-    } else {
-      //System.out.printf("\t\tReceived %d bytes.\n\n", bytesRead);
+    //System.out.printf("\t\tReceived %d bytes.\n\n", bytesRead);
 
-      // Construct a DataPacket from the buffer byte array.
-      byte[] totalMessageBytes = buffer.array();
+    // Construct a DataPacket from the buffer byte array.
+    byte[] totalMessageBytes = buffer.array();
 
-      // Construct a new Task from the fields held in the DataPacket.
-      Task task = new Task(totalMessageBytes, totalMessageBytes.length, selectionKey);
+    // Construct a new Task from the fields held in the DataPacket.
+    Task task = new Task(totalMessageBytes, totalMessageBytes.length, client);
 
-      this.threadPoolManager.addToTaskQueue(task);
+    this.threadPoolManager.addToTaskQueue(task);
 
-      // Clear the buffer so we can read another item
-      buffer.clear();
-    }
+    // Clear the buffer so we can read another item
+    buffer.clear();
+//    if (read == -1) {
+//      client.close();
+//    } else {
+//
+//    }
   }
 
   /**
    * Sends the completed tasks in a batch back to the original client
    */
-  public void sendTasksToClients(List<Task> batch) {
-    for (Task task : batch) {
+  public void sendTasksToClients(Batch batch) {
+    for (Task task : batch.getTasks()) {
       if (task.isComplete()) {
-        System.out.println("Task Complete...");
-        SelectionKey key = task.getKey();
-        SocketChannel clientChannel = (SocketChannel) key.channel();
+        //System.out.println("Task Complete...");
+        //SelectionKey key = task.getKey();
+        SocketChannel clientChannel = task.getClient();
 
         ByteBuffer buffer = ByteBuffer.wrap(task.getHash().getBytes());
         while (buffer.hasRemaining()) {
@@ -158,12 +170,15 @@ public class Server {
           } catch (IOException e) {
             System.err.println("UH OH");
             System.err.println(e.getMessage());
+            System.exit(1);
           }
-
         }
         buffer.clear();
+        serverStatistics.incrementClientMessage(clientChannel);
       }
     }
+
+    serverStatistics.incrementMessagesProcessed(batch.size());
   }
 
   public void startThreadPool() {
@@ -182,7 +197,7 @@ public class Server {
     return batchSize;
   }
 
-  public int getBatchTime() {
+  public double getBatchTime() {
     return batchTime;
   }
 
@@ -204,15 +219,18 @@ public class Server {
     int portNum = Integer.parseInt(args[0]);
     int threadPoolSize = Integer.parseInt(args[1]);
     int batchSize = Integer.parseInt(args[2]);
-    int batchTime = Integer.parseInt(args[3]);
+    double batchTime = Double.parseDouble(args[3]);
 
     Server server = new Server(portNum, threadPoolSize, batchSize, batchTime);
+    server.startServerStatisticsThread();
 
     try {
       server.initializeServerAndListenForConnections();
     } catch (IOException e) {
       System.out.println(e.getMessage());
     }
+
+
   }
 
 }
