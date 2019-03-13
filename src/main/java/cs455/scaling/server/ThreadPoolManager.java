@@ -102,4 +102,14 @@ public class ThreadPoolManager {
     }
   }
 
+  /**
+   * Kicks off all worker threads to start waiting on batches to process.
+   */
+  public void startWorkerThreads() {
+    for (WorkerThread worker: threadPool) {
+      Thread thread = new Thread(worker, "Worker Thread");
+      thread.start();
+    }
+  }
+
 }
