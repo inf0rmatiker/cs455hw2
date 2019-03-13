@@ -11,7 +11,7 @@ public class ThreadPoolManager {
   public List<WorkerThread> threadPool; // List of WorkerThreads which are available
   public List<Batch> taskQueue;
   private int threadPoolSize;
-  public int batchSize;
+  private int batchSize;
   private double batchTime;
   private boolean isDone = false;
   private long lastTimeRemoved = System.currentTimeMillis();
@@ -44,23 +44,8 @@ public class ThreadPoolManager {
     // If the task list on the top of the queue is full, or batch-time has passed, notify a
     // Worker thread to pull off a job.
     synchronized (taskQueue) {
-//      for (Batch batch: taskQueue) {
-//        if (batch.batchContains(task)) {
-//          System.err.println("\n\tTask already exists in taskQueue!!!\n");
-//        }
-//      }
 
       if (taskQueue.isEmpty() || taskQueue.get(taskQueue.size() - 1).isFull()) {
-        //System.err.println("In isEmpty() conditional");
-
-        // Notify a WorkerThread to remove a batch from the head of the queue
-        // System.out.println("Notifying a worker");
-        // See if duplicate task
-//        for (Batch batch: taskQueue) {
-//          if (batch.batchContains(task)) {
-//            System.err.println("ALREADY HERRRRREEE");
-//          }
-//        }
 
         addTaskToNewBatch(task);
       }
@@ -78,7 +63,10 @@ public class ThreadPoolManager {
     }
   }
 
-
+  /**
+   * Checks to see if batchTime has passed since the last time a batch has been processed.
+   * @return true if the batchTime has passed.
+   */
   public boolean batchTimePassed() {
     long difference = System.currentTimeMillis() - this.lastTimeRemoved;
     return (difference >= getBatchTimeMilliseconds());
@@ -97,8 +85,12 @@ public class ThreadPoolManager {
    */
   public Batch removeBatchFromQueue() {
     synchronized (taskQueue) {
-      this.updateRemovedTimestamp();
-      return taskQueue.remove(0);
+      if (taskQueue.size() > 0) {
+        Batch removedBatch = taskQueue.remove(0);
+        updateRemovedTimestamp();
+        return removedBatch;
+      }
+      else return null;
     }
   }
 

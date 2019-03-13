@@ -13,11 +13,9 @@ public class WorkerThread implements Runnable {
   private boolean isDone = false;
   public List<Batch> taskQueue;
   public ThreadPoolManager manager;
-  private Hash hasher;
   private Server server;
 
   public WorkerThread(ThreadPoolManager manager, Server server, List<Batch> taskQueue) {
-    this.hasher = new Hash();
     this.taskQueue = taskQueue;
     this.manager = manager;
     this.server = server;
@@ -39,17 +37,20 @@ public class WorkerThread implements Runnable {
 
       }
 
-      // Complete (process) the tasks by hashing them.
-      batchToProcess.processTasks();
+      if (batchToProcess != null) {
+        // Complete (process) the tasks by hashing them.
+        batchToProcess.processTasks();
 
-      // Send all the completed tasks back to the clients
-      server.sendTasksToClients(batchToProcess);
+        // Send all the completed tasks back to the clients
+        server.sendTasksToClients(batchToProcess);
+      }
     }
   }
 
   /**
-   * Checks and sees if 1. the queue is non-empty, 2. the queue head is full or batchTime has
-   * passed
+   * Checks to see if there's a batch available for processing on the taskQueue.
+   * @return false is the taskQueue is empty, true if batchTime has passed or there is a full batch
+   * on the head of the queue.
    */
   public boolean isBatchAvailable() {
     synchronized (taskQueue) {
@@ -62,14 +63,6 @@ public class WorkerThread implements Runnable {
         return false;
       }
     }
-  }
-
-  public synchronized void setDone() {
-    this.isDone = true;
-  }
-
-  public synchronized boolean isDone() {
-    return this.isDone;
   }
 
 }
