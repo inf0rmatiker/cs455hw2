@@ -3,7 +3,6 @@ package main.java.cs455.scaling.client;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import main.java.cs455.scaling.hash.Hash;
-import main.java.cs455.scaling.message.DataPacket;
 import java.util.Random;
 
 public class SenderThread implements Runnable {
@@ -44,13 +43,6 @@ public class SenderThread implements Runnable {
         // taskHashes ConcurrentHashMap.
         String hash = hasher.SHA1FromBytes(messageContents);
         client.addTaskHash(hash);
-//        //System.out.printf("Incomplete Hash: \t%s\n", hash);
-//        if (!client.isInHashMap(hash)) {
-//          System.out.println("FALSCH");
-//        }
-
-        // Create a DataPacket message containing byte length and messageContents
-        //DataPacket message = new DataPacket(length, messageContents);
 
         // Send the messageContents over the SocketChannel using the byteBuffer
         byteBuffer = ByteBuffer.wrap(messageContents);

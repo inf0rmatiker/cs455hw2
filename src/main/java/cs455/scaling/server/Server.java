@@ -3,15 +3,10 @@ package main.java.cs455.scaling.server;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import main.java.cs455.scaling.message.DataPacket;
 
 public class Server {
 
@@ -54,7 +49,6 @@ public class Server {
     while (true) {
       // Block until there is new activity
       selector.select();
-      //System.out.println("Activity on server.");
 
       // Set of key(s) that are ready
       Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -134,23 +128,14 @@ public class Server {
       read = client.read(buffer);
     }
 
-    //System.out.printf("\t\tReceived %d bytes.\n\n", bytesRead);
-
-    // Construct a DataPacket from the buffer byte array.
     byte[] totalMessageBytes = buffer.array();
 
-    // Construct a new Task from the fields held in the DataPacket.
     Task task = new Task(totalMessageBytes, totalMessageBytes.length, client);
 
     this.threadPoolManager.addToTaskQueue(task);
 
     // Clear the buffer so we can read another item
     buffer.clear();
-//    if (read == -1) {
-//      client.close();
-//    } else {
-//
-//    }
   }
 
   /**
@@ -159,8 +144,6 @@ public class Server {
   public void sendTasksToClients(Batch batch) {
     for (Task task : batch.getTasks()) {
       if (task.isComplete()) {
-        //System.out.println("Task Complete...");
-        //SelectionKey key = task.getKey();
         SocketChannel clientChannel = task.getClient();
 
         ByteBuffer buffer = ByteBuffer.wrap(task.getHash().getBytes());

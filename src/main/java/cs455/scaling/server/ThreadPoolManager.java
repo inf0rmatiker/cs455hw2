@@ -16,10 +16,6 @@ public class ThreadPoolManager {
   private boolean isDone = false;
   private long lastTimeRemoved = System.currentTimeMillis();
 
-  public ThreadPoolManager() {
-    this(10, 10, 10, null);
-  }
-
   public ThreadPoolManager(int threadPoolSize, int batchSize, double batchTime, Server server) {
     this.taskQueue = new LinkedList<>();
     this.threadPool = new ArrayList<>(threadPoolSize);
