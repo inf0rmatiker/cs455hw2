@@ -3,60 +3,63 @@ package main.java.cs455.scaling.server;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.LinkedBlockingQueue;
 
+/**
+ * Manages WorkerThreads by assigning incoming tasks to process to available workers.
+ */
 public class ThreadPoolManager {
 
   public List<WorkerThread> threadPool; // List of WorkerThreads which are available
-  public List<Batch> taskQueue;
-  private int threadPoolSize;
+  public List<Batch> taskQueue;         // Queue of Batches containing tasks to be processed
   private int batchSize;
   private double batchTime;
-  private boolean isDone = false;
-  private long lastTimeRemoved = System.currentTimeMillis();
+  private long lastTimeRemoved;         // Timestamp in milliseconds of the last batch processed
 
   public ThreadPoolManager(int threadPoolSize, int batchSize, double batchTime, Server server) {
     this.taskQueue = new LinkedList<>();
     this.threadPool = new ArrayList<>(threadPoolSize);
-    this.threadPoolSize = threadPoolSize;
     this.batchSize = batchSize;
     this.batchTime = batchTime;
 
     for (int i = 0; i < threadPoolSize; i++) {
       threadPool.add(new WorkerThread(this, server, taskQueue));
     }
+
+    this.lastTimeRemoved = System.currentTimeMillis();
   }
 
+  /**
+   * Converts the double batchTime, specified in seconds, to milliseconds.
+   * @return the batchTime in milliseconds
+   */
   private double getBatchTimeMilliseconds() {
     return batchTime * 1000;
   }
 
-  public int getThreadPoolSize() {
-    return threadPoolSize;
-  }
-
+  /**
+   * Updates the lastTimeRemoved field to the current timestamp.
+   */
   public synchronized void updateRemovedTimestamp() {
     lastTimeRemoved = System.currentTimeMillis();
   }
 
+  /**
+   * Adds the given Task to a Batch in the taskQueue, and notifies a WorkerThread to process a Batch
+   * if there is a full Batch on the queue or batchTime has expired since last Batch processed.
+   * @param task Task to add to a taskQueue Batch.
+   */
   public void addToTaskQueue(Task task) {
-    // If the task list on the top of the queue is full, or batch-time has passed, notify a
-    // Worker thread to pull off a job.
     synchronized (taskQueue) {
-
       if (taskQueue.isEmpty() || taskQueue.get(taskQueue.size() - 1).isFull()) {
-
         addTaskToNewBatch(task);
       }
       else {
         taskQueue.get(taskQueue.size() - 1).addTaskToBatch(task);
-
-
       }
+
       if (!taskQueue.isEmpty()) {
         if (taskQueue.get(0).isFull() || batchTimePassed()) {
-          //System.err.println("In isFull() conditional");
+          // Notify an available WorkerThread to process a Batch
           taskQueue.notify();
         }
       }
@@ -72,6 +75,10 @@ public class ThreadPoolManager {
     return (difference >= getBatchTimeMilliseconds());
   }
 
+  /**
+   * Creates a new Batch and adds it to the taskQueue.
+   * @param task The initial Task object to put into the new Batch
+   */
   private void addTaskToNewBatch(Task task) {
     synchronized (taskQueue) {
       Batch newBatch = new Batch(batchSize);
@@ -81,41 +88,17 @@ public class ThreadPoolManager {
   }
 
   /**
-   * Removes and returns the batch at the head of the queue
+   * Removes and returns the batch at the head of the queue if the queue is non-empty.
+   * @return the Batch on the head of the taskQueue
    */
   public Batch removeBatchFromQueue() {
     synchronized (taskQueue) {
-      if (taskQueue.size() > 0) {
+      if (!taskQueue.isEmpty()) {
         Batch removedBatch = taskQueue.remove(0);
         updateRemovedTimestamp();
         return removedBatch;
       }
       else return null;
-    }
-  }
-
-
-  public List<Batch> getTaskQueue() {
-    return this.taskQueue;
-  }
-
-  public synchronized boolean isDone() {
-    return isDone;
-  }
-
-  // Sets all worker threads' isDone field to true
-  public synchronized void setDone() {
-    this.isDone = true;
-    for (WorkerThread worker: threadPool) {
-      worker.setDone();
-    }
-  }
-
-  // Kicks off all worker threads
-  public void startWorkerThreads() {
-    for (WorkerThread worker: threadPool) {
-      Thread thread = new Thread(worker, "Worker Thread");
-      thread.start();
     }
   }
 
