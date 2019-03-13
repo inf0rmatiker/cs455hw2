@@ -1,9 +1,125 @@
 package main.java.cs455.scaling.client;
 
-import main.java.cs455.scaling.server.Server;
-
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.util.concurrent.ConcurrentHashMap;
 public class Client {
 
+  private ConcurrentHashMap<String, String> taskHashes;
+  private String serverHost;
+  private int serverPort;
+  private int messageRate;
+  private SenderThread sender;
+  private ClientStatistics clientStatistics;
+  private static SocketChannel client;
+  private static ByteBuffer buffer;
+
+  public Client() {
+    this("denver", 5003, 2);
+  }
+
+  public Client(String serverHost, int serverPort, int messageRate) {
+    this.serverHost = serverHost;
+    this.messageRate = messageRate;
+    this.serverPort = serverPort;
+    this.taskHashes = new ConcurrentHashMap<>();
+    this.clientStatistics = new ClientStatistics();
+  }
+
+  public String getServerHost() {
+    return serverHost;
+  }
+
+  public int getServerPort() {
+    return serverPort;
+  }
+
+  public int getMessageRate() {
+    return messageRate;
+  }
+
+  public void startClientStatisticsThread() {
+    Thread clientStatistics = new Thread(this.clientStatistics, "Client Statistics Thread");
+    clientStatistics.start();
+  }
+
+  /**
+   * Establishes a connection to the server and create a buffer to read/write.
+   * @throws IOException
+   */
+  public void establishServerConnection() throws IOException {
+    // Connect to the server
+    client = SocketChannel.open(new InetSocketAddress(this.serverHost, this.serverPort));
+
+    // Create byte buffer
+    buffer = ByteBuffer.allocate(40);
+  }
+
+  /**
+   * Starts a sender thread to send messages. Reads any responses coming back from the server.
+   * @throws IOException
+   */
+  public void doWork() throws IOException {
+    // Kicks off the sender thread, which randomly generates 8KB byte arrays, hashes them, and stores
+    // the hashes in the taskHashes ConcurrentHashMap. It then sends the original byte arrays to
+    // the Server.
+    this.initializeSenderThread();
+    this.startSenderThread();
+
+    // Listens to incoming hashes from the server, and if they are in the list of pending jobs,
+    // Removes them.
+    while (true) {
+      client.read(buffer); // blocking call to read a hash from the server
+      String completedHash = new String(buffer.array()).trim();
+      clientStatistics.incrementReceiveCount();
+      //System.out.printf("Completed Hash: \t%s\n", completedHash);
+
+
+      if (isInHashMap(completedHash)) {
+        removeTaskHash(completedHash);
+      }
+      else {
+        System.out.printf("Unable to find hash in HashMap!\n\t>> %s <<\n", completedHash);
+        printTaskHashes();
+      }
+
+      buffer.clear();
+    }
+  }
+
+  public void initializeSenderThread() {
+    this.sender = new SenderThread(this, clientStatistics);
+  }
+
+  public synchronized void sendMessageToServer(ByteBuffer byteBuffer) throws IOException {
+    client.write(byteBuffer);
+  }
+
+  public void removeTaskHash(String hash) {
+    taskHashes.remove(hash);
+  }
+
+  public void addTaskHash(String hash) {
+    taskHashes.put(hash, hash);
+  }
+
+  public boolean isInHashMap(String hash) {
+    return taskHashes.containsKey(hash);
+  }
+
+  public void printTaskHashes() {
+    System.out.println("\t>> TASK HASHES <<");
+    for (String key: taskHashes.keySet()){
+      System.out.printf("\tKey: %s, Hash: %s\n", key, taskHashes.get(key));
+    }
+  }
+
+  public void startSenderThread() {
+    Thread senderThread = new Thread(sender, "Client Sender Thread");
+    senderThread.start();
+  }
 
   private static void printClientUsageMessage() {
     String message = "\nUsage:\n\njava main.java.cs455.scaling.client.Client <server-host> <server-port> <message-rate>\n";
@@ -20,6 +136,21 @@ public class Client {
     String serverHost = args[0];
     int serverPort = Integer.parseInt(args[1]);
     int messageRate = Integer.parseInt(args[2]); // Should be between 2 - 4
+
+    Client client = new Client(serverHost, serverPort, messageRate);
+    client.startClientStatisticsThread();
+
+    try {
+      client.establishServerConnection();
+    } catch (IOException e) {
+      System.err.println("Unable to connect to the server...\n" + e.getMessage());
+    }
+
+    try {
+      client.doWork();
+    } catch (IOException e) {
+      System.err.println("Unable to perform task...\n" + e.getMessage());
+    }
 
   }
 
