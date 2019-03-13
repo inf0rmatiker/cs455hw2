@@ -4,19 +4,13 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import main.java.cs455.scaling.hash.Hash;
-import java.util.LinkedList;
-import main.java.cs455.scaling.server.Task;
-
 public class Client {
 
   private ConcurrentHashMap<String, String> taskHashes;
   private String serverHost;
   private int serverPort;
   private int messageRate;
-  private Hash hasher;
   private SenderThread sender;
   private ClientStatistics clientStatistics;
   private static SocketChannel client;
@@ -31,7 +25,6 @@ public class Client {
     this.messageRate = messageRate;
     this.serverPort = serverPort;
     this.taskHashes = new ConcurrentHashMap<>();
-    this.hasher = new Hash();
     this.clientStatistics = new ClientStatistics();
   }
 
